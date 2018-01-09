@@ -16,7 +16,7 @@ from syncnet_params import *
 #############################################################
 
 
-def load_pretrained_syncnet_model(version='v4', mode='lip', verbose=False):
+def load_pretrained_syncnet_model(version='v4', mode='both', verbose=False):
 
     # version = {'v4', 'v7'}
     if version not in {'v4', 'v7'}:
@@ -43,12 +43,26 @@ def load_pretrained_syncnet_model(version='v4', mode='lip', verbose=False):
         if verbose:
             print("Loaded syncnet weights.")
 
-        # Set video weights to syncnet_video_model
-        set_syncnet_weights_to_syncnet_model(syncnet_model=syncnet_model,
-                                             syncnet_weights=syncnet_weights,
-                                             syncnet_layer_names=syncnet_layer_names,
-                                             mode=mode,
-                                             verbose=verbose)
+        # Set lip weights to syncnet_model
+        if mode != 'both':
+            set_syncnet_weights_to_syncnet_model(syncnet_model=syncnet_model,
+                                                 syncnet_weights=syncnet_weights,
+                                                 syncnet_layer_names=syncnet_layer_names,
+                                                 mode=mode,
+                                                 verbose=verbose)
+        else:
+            # Audio
+            set_syncnet_weights_to_syncnet_model(syncnet_model=syncnet_model[0],
+                                                 syncnet_weights=syncnet_weights,
+                                                 syncnet_layer_names=syncnet_layer_names,
+                                                 mode='audio',
+                                                 verbose=verbose)
+            # Lip
+            set_syncnet_weights_to_syncnet_model(syncnet_model=syncnet_model[1],
+                                                 syncnet_weights=syncnet_weights,
+                                                 syncnet_layer_names=syncnet_layer_names,
+                                                 mode='lip',
+                                                 verbose=verbose)
 
         if verbose:
             print("Set syncnet weights.")
@@ -69,15 +83,29 @@ def load_pretrained_syncnet_model(version='v4', mode='lip', verbose=False):
 #############################################################
 
 def load_syncnet_model(version='v4', mode='lip', verbose=False):
-    if mode == 'lip':
+    if mode == 'lip' or mode == 'both':
         if version == 'v4':
             # Load frontal model
-            syncnet_model = syncnet_video_model_v4()
+            syncnet_lip_model = syncnet_lip_model_v4()
         elif version == 'v7':
             # Load multi-view model
-            syncnet_model = syncnet_video_model_v7()
-    else:
-        raise ValueError("\n\nERROR: " + mode + " mode not implemented yet, sorry...\nOnly 'lip' mode available.")
+            syncnet_lip_model = syncnet_lip_model_v7()
+
+    if mode == 'audio' or mode == 'both':
+        if version == 'v4':
+            # Load frontal model
+            syncnet_audio_model = syncnet_audio_model_v4()
+        elif version == 'v7':
+            # Load multi-view model
+            syncnet_audio_model = syncnet_audio_model_v7()
+
+    if mode == 'lip':
+        syncnet_model = syncnet_lip_model
+    elif mode == 'audio':
+        syncnet_model = syncnet_audio_model
+    elif mode == 'both':
+        syncnet_model = [syncnet_audio_model, syncnet_lip_model]
+
     return syncnet_model
 
 
@@ -106,7 +134,7 @@ def load_syncnet_weights(version='v4', verbose=False):
         syncnet_layer_names = [[chr(i) for i in  f[n[0]]] \
                                for n in f['net/layers/name']]
 
-    # Find the starting index of audio and video layers
+    # Find the starting index of audio and lip layers
     audio_found = False
     audio_start_idx = 0
     lip_found = False
@@ -119,6 +147,8 @@ def load_syncnet_weights(version='v4', verbose=False):
         # Finding audio_start_idx
         if not audio_found and 'audio' in syncnet_layer_names[i]:
             audio_found = True
+            if verbose:
+                print("Found audio")
         elif not audio_found and 'audio' not in syncnet_layer_names[i]:
             if 'conv' in syncnet_layer_names[i]:
                 audio_start_idx += 2
@@ -130,6 +160,8 @@ def load_syncnet_weights(version='v4', verbose=False):
         # Finding lip_start_idx
         if not lip_found and 'lip' in syncnet_layer_names[i]:
             lip_found = True
+            if verbose:
+                print("Found lip")
         elif not lip_found and 'lip' not in syncnet_layer_names[i]:
             if 'conv' in syncnet_layer_names[i]:
                 lip_start_idx += 2
@@ -143,6 +175,7 @@ def load_syncnet_weights(version='v4', verbose=False):
 
     if verbose:
         print("  lip_start_idx =", lip_start_idx)
+        print("  audio_start_idx =", audio_start_idx)
 
     return syncnet_weights, syncnet_layer_names, audio_start_idx, lip_start_idx
 
@@ -163,6 +196,12 @@ def set_syncnet_weights_to_syncnet_model(syncnet_model,
     # Video syncnet-related weights begin at 35 in syncnet_weights
     if mode == 'lip':
         syncnet_weights_idx = 35
+    else:
+        syncnet_weights_idx = 0
+
+    if mode == 'both':
+        syncnet_lip_model = syncnet_model[0]
+        syncnet_audio_model = syncnet_model[1]
 
     # Init syncnet_layer_idx, to be incremented only at 'lip' layers
     syncnet_layer_idx = -1
@@ -180,16 +219,7 @@ def set_syncnet_weights_to_syncnet_model(syncnet_model,
         syncnet_layer_idx += 1
 
         if verbose:
-            if mode == 'lip':
-                print("  SyncNet Video Layer", syncnet_layer_idx, ":", syncnet_layer_name)
-            elif mode == 'audio':
-                print("  SyncNet Audio Layer", syncnet_layer_idx, ":", syncnet_layer_name)
-            elif mode == 'both':
-                if syncnet_layer_idx < len(syncnet_layer_names)/2:
-                    print("  SyncNet Audio Layer", syncnet_layer_idx, ":", syncnet_layer_name)
-                else:
-                    print("  SyncNet Video Layer", syncnet_layer_idx, ":", syncnet_layer_name)
-
+            print("  SyncNet Layer", syncnet_layer_idx, ":", syncnet_layer_name, "; weight index :", syncnet_weights_idx)
 
         # Convolutional layer
         if 'conv' in syncnet_layer_name:
@@ -238,181 +268,351 @@ def set_syncnet_weights_to_syncnet_model(syncnet_model,
 #############################################################
 
 
-def syncnet_video_model_v4():
+def syncnet_lip_model_v4():
 
     # Image data format
     K.set_image_data_format(IMAGE_DATA_FORMAT)
     if IMAGE_DATA_FORMAT == 'channels_first':
-        input_shape = (SYNCNET_CHANNELS, MOUTH_H, MOUTH_W)
+        input_shape = (SYNCNET_VIDEO_CHANNELS, MOUTH_H, MOUTH_W)
     elif IMAGE_DATA_FORMAT == 'channels_last':
-        input_shape = (MOUTH_H, MOUTH_W, SYNCNET_CHANNELS)
+        input_shape = (MOUTH_H, MOUTH_W, SYNCNET_VIDEO_CHANNELS)
 
-    model_v4 = Sequential()     # (None, 112, 112, 5)
+    lip_model_v4 = Sequential()     # (None, 112, 112, 5)
 
     # conv1_lip
-    model_v4.add(Conv2D(96, (3, 3), padding='valid', name='conv1_lip',
+    lip_model_v4.add(Conv2D(96, (3, 3), padding='valid', name='conv1_lip',
         input_shape=input_shape))  # (None, 110, 110, 96)
 
-    # bin1_lip
-    model_v4.add(BatchNormalization(name='bin1_lip'))
+    # bn1_lip
+    lip_model_v4.add(BatchNormalization(name='bn1_lip'))
 
     # relu1_lip
-    model_v4.add(Activation('relu', name='relu1_lip'))
+    lip_model_v4.add(Activation('relu', name='relu1_lip'))
 
     # pool1_lip
-    model_v4.add(MaxPooling2D(pool_size=(3, 3), strides=(2, 2), padding='valid', name='pool1_lip'))   # (None, 54, 54, 96)
+    lip_model_v4.add(MaxPooling2D(pool_size=(3, 3), strides=(2, 2), padding='valid', name='pool1_lip'))   # (None, 54, 54, 96)
 
     # conv2_lip
-    model_v4.add(Conv2D(256, (5, 5), padding='valid', name='conv2_lip'))   # (None, 256, 50, 50)
+    lip_model_v4.add(Conv2D(256, (5, 5), padding='valid', name='conv2_lip'))   # (None, 256, 50, 50)
 
     # bn2_lip
-    model_v4.add(BatchNormalization(name='bn2_lip'))
+    lip_model_v4.add(BatchNormalization(name='bn2_lip'))
 
     # relu2_lip
-    model_v4.add(Activation('relu', name='relu2_lip'))
+    lip_model_v4.add(Activation('relu', name='relu2_lip'))
 
     # pool2_lip
-    model_v4.add(MaxPooling2D(pool_size=(3, 3), strides=(2, 2), padding='valid', name='pool2_lip'))   # (None, 24, 24, 256)
+    lip_model_v4.add(MaxPooling2D(pool_size=(3, 3), strides=(2, 2), padding='valid', name='pool2_lip'))   # (None, 24, 24, 256)
 
     # conv3_lip
-    model_v4.add(Conv2D(512, (3, 3), padding='valid', name='conv3_lip'))   # (None, 22, 22, 512)
+    lip_model_v4.add(Conv2D(512, (3, 3), padding='valid', name='conv3_lip'))   # (None, 22, 22, 512)
 
     # bn3_lip
-    model_v4.add(BatchNormalization(name='bn3_lip'))
+    lip_model_v4.add(BatchNormalization(name='bn3_lip'))
 
     # relu3_lip
-    model_v4.add(Activation('relu', name='relu3_lip'))
+    lip_model_v4.add(Activation('relu', name='relu3_lip'))
 
     # conv4_lip
-    model_v4.add(Conv2D(512, (3, 3), padding='valid', name='conv4_lip'))   # (None, 20, 20, 512)
+    lip_model_v4.add(Conv2D(512, (3, 3), padding='valid', name='conv4_lip'))   # (None, 20, 20, 512)
 
     # bn4_lip
-    model_v4.add(BatchNormalization(name='bn4_lip'))
+    lip_model_v4.add(BatchNormalization(name='bn4_lip'))
 
     # relu4_lip
-    model_v4.add(Activation('relu', name='relu4_lip'))
+    lip_model_v4.add(Activation('relu', name='relu4_lip'))
 
     # conv5_lip
-    model_v4.add(Conv2D(512, (3, 3), padding='valid', name='conv5_lip'))   # (None, 18, 18, 512)
+    lip_model_v4.add(Conv2D(512, (3, 3), padding='valid', name='conv5_lip'))   # (None, 18, 18, 512)
 
     # bn5_lip
-    model_v4.add(BatchNormalization(name='bn5_lip'))
+    lip_model_v4.add(BatchNormalization(name='bn5_lip'))
 
     # relu5_lip
-    model_v4.add(Activation('relu', name='relu5_lip'))
+    lip_model_v4.add(Activation('relu', name='relu5_lip'))
 
     # pool5_lip
-    model_v4.add(MaxPooling2D(pool_size=(3, 3), strides=(3, 3), padding='valid', name='pool5_lip'))   # (None, 6, 6, 512)
+    lip_model_v4.add(MaxPooling2D(pool_size=(3, 3), strides=(3, 3), padding='valid', name='pool5_lip'))   # (None, 6, 6, 512)
 
     # fc6_lip
-    model_v4.add(Flatten(name='flatten'))
-    model_v4.add(Dense(256, name='fc6_lip'))    # (None, 256)
+    lip_model_v4.add(Flatten(name='flatten_lip'))
+    lip_model_v4.add(Dense(256, name='fc6_lip'))    # (None, 256)
 
     # bn6_lip
-    model_v4.add(BatchNormalization(name='bn6_lip'))
+    lip_model_v4.add(BatchNormalization(name='bn6_lip'))
 
     # relu6_lip
-    model_v4.add(Activation('relu', name='relu6_lip'))
+    lip_model_v4.add(Activation('relu', name='relu6_lip'))
 
     # fc7_lip
-    model_v4.add(Dense(128, name='fc7_lip'))    # (None, 128)
+    lip_model_v4.add(Dense(128, name='fc7_lip'))    # (None, 128)
 
     # bn7_lip
-    model_v4.add(BatchNormalization(name='bn7_lip'))
+    lip_model_v4.add(BatchNormalization(name='bn7_lip'))
 
     # relu7_lip
-    model_v4.add(Activation('relu', name='relu7_lip'))
+    lip_model_v4.add(Activation('relu', name='relu7_lip'))
 
-    return model_v4
+    return lip_model_v4
+
+
+#############################################################
+# SYNCNET_v4 AUDIO (frontal)
+#############################################################
+
+
+def syncnet_audio_model_v4():
+
+    # Audio input shape
+    input_shape = (SYNCNET_MFCC_CHANNELS, AUDIO_TIME_STEPS, 1)
+
+    audio_model_v4 = Sequential()     # (None, 13, 20, 1)
+
+    # conv1_audio
+    audio_model_v4.add(Conv2D(64, (3, 3), padding='same', name='conv1_audio',
+        input_shape=input_shape))  # (None, 13, 20, 64)
+
+    # bn1_audio
+    audio_model_v4.add(BatchNormalization(name='bn1_audio'))
+
+    # relu1_audio
+    audio_model_v4.add(Activation('relu', name='relu1_audio'))
+
+    # conv2_audio
+    audio_model_v4.add(Conv2D(128, (3, 3), padding='same', name='conv2_audio'))   # (None, 13, 20, 128)
+
+    # bn2_audio
+    audio_model_v4.add(BatchNormalization(name='bn2_audio'))
+
+    # relu2_audio
+    audio_model_v4.add(Activation('relu', name='relu2_audio'))
+
+    # pool2_audio
+    audio_model_v4.add(MaxPooling2D(pool_size=(3, 3), strides=(1, 2), padding='valid', name='pool2_audio'))   # (None, 11, 9, 128)
+
+    # conv3_audio
+    audio_model_v4.add(Conv2D(256, (3, 3), padding='same', name='conv3_audio'))   # (None, 11, 9, 256)
+
+    # bn3_audio
+    audio_model_v4.add(BatchNormalization(name='bn3_audio'))
+
+    # relu3_audio
+    audio_model_v4.add(Activation('relu', name='relu3_audio'))
+
+    # conv4_audio
+    audio_model_v4.add(Conv2D(256, (3, 3), padding='same', name='conv4_audio'))   # (None, 11, 9, 256)
+
+    # bn4_audio
+    audio_model_v4.add(BatchNormalization(name='bn4_audio'))
+
+    # relu4_audio
+    audio_model_v4.add(Activation('relu', name='relu4_audio'))
+
+    # conv5_audio
+    audio_model_v4.add(Conv2D(256, (3, 3), padding='same', name='conv5_audio'))   # (None, 11, 9, 256)
+
+    # bn5_audio
+    audio_model_v4.add(BatchNormalization(name='bn5_audio'))
+
+    # relu5_audio
+    audio_model_v4.add(Activation('relu', name='relu5_audio'))
+
+    # pool5_audio
+    audio_model_v4.add(MaxPooling2D(pool_size=(3, 3), strides=(2, 2), padding='valid', name='pool5_audio'))   # (None, 5, 4, 256)
+
+    # fc6_audio
+    audio_model_v4.add(Flatten(name='flatten_audio'))
+    audio_model_v4.add(Dense(256, name='fc6_audio'))    # (None, 256)
+
+    # bn6_audio
+    audio_model_v4.add(BatchNormalization(name='bn6_audio'))
+
+    # relu6_audio
+    audio_model_v4.add(Activation('relu', name='relu6_audio'))
+
+    # fc7_audio
+    audio_model_v4.add(Dense(128, name='fc7_audio'))    # (None, 256)
+
+    # bn7_audio
+    audio_model_v4.add(BatchNormalization(name='bn7_audio'))
+
+    # relu7_audio
+    audio_model_v4.add(Activation('relu', name='relu7_audio'))
+
+    return audio_model_v4
+
 
 #############################################################
 # SYNCNET_v7 VIDEO (multi-view)
 #############################################################
 
 
-def syncnet_video_model_v7():
+def syncnet_lip_model_v7():
 
     # Image data format
     K.set_image_data_format(IMAGE_DATA_FORMAT)
     if IMAGE_DATA_FORMAT == 'channels_first':
-        input_shape = (SYNCNET_CHANNELS, FACE_H, FACE_W)
+        input_shape = (SYNCNET_VIDEO_CHANNELS, FACE_H, FACE_W)
     elif IMAGE_DATA_FORMAT == 'channels_last':
-        input_shape = (FACE_H, FACE_W, SYNCNET_CHANNELS)
+        input_shape = (FACE_H, FACE_W, SYNCNET_VIDEO_CHANNELS)
 
-    model_v7 = Sequential()     # (None, 224, 224, 5)
+    lip_model_v7 = Sequential()     # (None, 224, 224, 5)
 
     # conv1_lip
-    model_v7.add(Conv2D(96, (7, 7), strides=(2, 2), padding='valid', name='conv1_lip',
+    lip_model_v7.add(Conv2D(96, (7, 7), strides=(2, 2), padding='valid', name='conv1_lip',
         input_shape=input_shape))    # (None, 109, 109, 96)
 
-    # bin1_lip
-    model_v7.add(BatchNormalization(name='bin1_lip'))
+    # bn1_lip
+    lip_model_v7.add(BatchNormalization(name='bn1_lip'))
 
     # relu1_lip
-    model_v7.add(Activation('relu', name='relu1_lip'))
+    lip_model_v7.add(Activation('relu', name='relu1_lip'))
 
     # pool1_lip
-    model_v7.add(MaxPooling2D(pool_size=(3, 3), strides=(2, 2), padding='valid', name='pool1_lip'))   # (None, 54, 54, 96)
+    lip_model_v7.add(MaxPooling2D(pool_size=(3, 3), strides=(2, 2), padding='valid', name='pool1_lip'))   # (None, 54, 54, 96)
 
     # conv2_lip
-    model_v7.add(Conv2D(256, (5, 5), strides=(2, 2), padding='valid', name='conv2_lip'))   # (None, 25, 25, 96)
+    lip_model_v7.add(Conv2D(256, (5, 5), strides=(2, 2), padding='valid', name='conv2_lip'))   # (None, 25, 25, 96)
 
     # bn2_lip
-    model_v7.add(BatchNormalization(name='bn2_lip'))
+    lip_model_v7.add(BatchNormalization(name='bn2_lip'))
 
     # relu2_lip
-    model_v7.add(Activation('relu', name='relu2_lip'))
+    lip_model_v7.add(Activation('relu', name='relu2_lip'))
 
     # pool2_lip
-    model_v7.add(MaxPooling2D(pool_size=(3, 3), strides=(2, 2), padding='valid', name='pool2_lip'))   # (None, 12, 12, 256)
+    lip_model_v7.add(MaxPooling2D(pool_size=(3, 3), strides=(2, 2), padding='valid', name='pool2_lip'))   # (None, 12, 12, 256)
 
     # conv3_lip
-    model_v7.add(Conv2D(512, (3, 3), padding='same', name='conv3_lip'))   # (None, 12, 12, 512)
+    lip_model_v7.add(Conv2D(512, (3, 3), padding='same', name='conv3_lip'))   # (None, 12, 12, 512)
 
     # bn3_lip
-    model_v7.add(BatchNormalization(name='bn3_lip'))
+    lip_model_v7.add(BatchNormalization(name='bn3_lip'))
 
     # relu3_lip
-    model_v7.add(Activation('relu', name='relu3_lip'))
+    lip_model_v7.add(Activation('relu', name='relu3_lip'))
 
     # conv4_lip
-    model_v7.add(Conv2D(512, (3, 3), padding='same', name='conv4_lip'))   # (None, 12, 12, 512)
+    lip_model_v7.add(Conv2D(512, (3, 3), padding='same', name='conv4_lip'))   # (None, 12, 12, 512)
 
     # bn4_lip
-    model_v7.add(BatchNormalization(name='bn4_lip'))
+    lip_model_v7.add(BatchNormalization(name='bn4_lip'))
 
     # relu4_lip
-    model_v7.add(Activation('relu', name='relu4_lip'))
+    lip_model_v7.add(Activation('relu', name='relu4_lip'))
 
     # conv5_lip
-    model_v7.add(Conv2D(512, (3, 3), padding='same', name='conv5_lip'))   # (None, 12, 12, 512)
+    lip_model_v7.add(Conv2D(512, (3, 3), padding='same', name='conv5_lip'))   # (None, 12, 12, 512)
 
     # bn5_lip
-    model_v7.add(BatchNormalization(name='bn5_lip'))
+    lip_model_v7.add(BatchNormalization(name='bn5_lip'))
 
     # relu5_lip
-    model_v7.add(Activation('relu', name='relu5_lip'))
+    lip_model_v7.add(Activation('relu', name='relu5_lip'))
 
     # pool5_lip
-    model_v7.add(MaxPooling2D(pool_size=(3, 3), strides=(2, 2), padding='same', name='pool5_lip'))   # (None, 6, 6, 256)
+    lip_model_v7.add(MaxPooling2D(pool_size=(3, 3), strides=(2, 2), padding='same', name='pool5_lip'))   # (None, 6, 6, 256)
 
     # fc6_lip
-    model_v7.add(Flatten(name='flatten'))
-    model_v7.add(Dense(512, name='fc6_lip'))
+    lip_model_v7.add(Flatten(name='flatten'))
+    lip_model_v7.add(Dense(512, name='fc6_lip'))
 
     # bn6_lip
-    model_v7.add(BatchNormalization(name='bn6_lip'))
+    lip_model_v7.add(BatchNormalization(name='bn6_lip'))
 
     # relu6_lip
-    model_v7.add(Activation('relu', name='relu6_lip'))
+    lip_model_v7.add(Activation('relu', name='relu6_lip'))
 
     # fc7_lip
-    model_v7.add(Dense(256, name='fc7_lip'))
+    lip_model_v7.add(Dense(256, name='fc7_lip'))
 
     # bn7_lip
-    model_v7.add(BatchNormalization(name='bn7_lip'))
+    lip_model_v7.add(BatchNormalization(name='bn7_lip'))
 
     # relu7_lip
-    model_v7.add(Activation('relu', name='relu7_lip'))
+    lip_model_v7.add(Activation('relu', name='relu7_lip'))
 
-    return model_v7
+    return lip_model_v7
+
+
+#############################################################
+# SYNCNET_v7 AUDIO (multi-view)
+#############################################################
+
+
+def syncnet_audio_model_v7():
+
+    # Audio input shape
+    input_shape = (SYNCNET_MFCC_CHANNELS, AUDIO_TIME_STEPS, 1)
+
+    audio_model_v7 = Sequential()     # (None, 13, 20, 1)
+
+    # conv1_audio
+    audio_model_v7.add(Conv2D(64, (3, 3), padding='same', name='conv1_audio',
+        input_shape=input_shape))  # (None, 13, 20, 64)
+
+    # bn1_audio
+    audio_model_v7.add(BatchNormalization(name='bn1_audio'))
+
+    # conv2_audio
+    audio_model_v7.add(Conv2D(128, (3, 3), padding='same', name='conv2_audio'))   # (None, 13, 20, 128)
+
+    # bn2_audio
+    audio_model_v7.add(BatchNormalization(name='bn2_audio'))
+
+    # relu2_audio
+    audio_model_v7.add(Activation('relu', name='relu2_audio'))
+
+    # pool2_audio
+    audio_model_v7.add(MaxPooling2D(pool_size=(3, 3), strides=(1, 2), padding='valid', name='pool2_audio'))   # (None, 11, 9, 128)
+
+    # conv3_audio
+    audio_model_v7.add(Conv2D(256, (3, 3), padding='same', name='conv3_audio'))   # (None, 11, 9, 256)
+
+    # bn3_audio
+    audio_model_v7.add(BatchNormalization(name='bn3_audio'))
+
+    # relu3_audio
+    audio_model_v7.add(Activation('relu', name='relu3_audio'))
+
+    # conv7_audio
+    audio_model_v7.add(Conv2D(256, (3, 3), padding='same', name='conv7_audio'))   # (None, 11, 9, 256)
+
+    # bn4_audio
+    audio_model_v7.add(BatchNormalization(name='bn4_audio'))
+
+    # relu4_audio
+    audio_model_v7.add(Activation('relu', name='relu4_audio'))
+
+    # conv5_audio
+    audio_model_v7.add(Conv2D(256, (3, 3), padding='same', name='conv5_audio'))   # (None, 11, 9, 256)
+
+    # bn5_audio
+    audio_model_v7.add(BatchNormalization(name='bn5_audio'))
+
+    # relu5_audio
+    audio_model_v7.add(Activation('relu', name='relu5_audio'))
+
+    # pool5_audio
+    audio_model_v7.add(MaxPooling2D(pool_size=(3, 3), strides=(2, 2), padding='valid', name='pool5_audio'))   # (None, 5, 4, 256)
+
+    # fc6_audio
+    audio_model_v7.add(Flatten(name='flatten_audio'))
+    audio_model_v7.add(Dense(512, name='fc6_audio'))    # (None, 512)
+
+    # bn6_audio
+    audio_model_v7.add(BatchNormalization(name='bn6_audio'))
+
+    # relu6_audio
+    audio_model_v7.add(Activation('relu', name='relu6_audio'))
+
+    # fc7_audio
+    audio_model_v7.add(Dense(256, name='fc7_audio'))    # (None, 256)
+
+    # bn7_audio
+    audio_model_v7.add(BatchNormalization(name='bn7_audio'))
+
+    # relu7_audio
+    audio_model_v7.add(Activation('relu', name='relu7_audio'))
+
+    return audio_model_v7
