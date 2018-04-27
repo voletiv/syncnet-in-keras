@@ -1,5 +1,6 @@
 from __future__ import print_function
 
+import dlib
 import h5py
 import numpy as np
 import os
@@ -9,7 +10,7 @@ from keras.models import Sequential
 from keras.layers import Conv2D, BatchNormalization, Activation, MaxPooling2D
 from keras.layers import Flatten, Dense
 
-from syncnet_params import *
+import syncnet_params
 
 #############################################################
 # LOAD TRAINED SYNCNET MODEL
@@ -116,9 +117,9 @@ def load_syncnet_model(version='v4', mode='lip', verbose=False):
 def load_syncnet_weights(version='v4', verbose=False):
 
     if version == 'v4':
-        syncnet_weights_file = SYNCNET_WEIGHTS_FILE_V4
+        syncnet_weights_file = syncnet_params.SYNCNET_WEIGHTS_FILE_V4
     elif version == 'v7':
-        syncnet_weights_file = SYNCNET_WEIGHTS_FILE_V7
+        syncnet_weights_file = syncnet_params.SYNCNET_WEIGHTS_FILE_V7
 
     if verbose:
         print("Loading syncnet_weights from", syncnet_weights_file)
@@ -271,11 +272,11 @@ def set_syncnet_weights_to_syncnet_model(syncnet_model,
 def syncnet_lip_model_v4():
 
     # Image data format
-    K.set_image_data_format(IMAGE_DATA_FORMAT)
-    if IMAGE_DATA_FORMAT == 'channels_first':
-        input_shape = (SYNCNET_VIDEO_CHANNELS, MOUTH_H, MOUTH_W)
+    K.set_image_data_format(syncnet_params.IMAGE_DATA_FORMAT)
+    if syncnet_params.IMAGE_DATA_FORMAT == 'channels_first':
+        input_shape = (syncnet_params.SYNCNET_VIDEO_CHANNELS, syncnet_params.MOUTH_H, syncnet_params.MOUTH_W)
     elif IMAGE_DATA_FORMAT == 'channels_last':
-        input_shape = (MOUTH_H, MOUTH_W, SYNCNET_VIDEO_CHANNELS)
+        input_shape = (syncnet_params.MOUTH_H, syncnet_params.MOUTH_W, syncnet_params.SYNCNET_VIDEO_CHANNELS)
 
     lip_model_v4 = Sequential()     # (None, 112, 112, 5)
 
@@ -364,7 +365,7 @@ def syncnet_lip_model_v4():
 def syncnet_audio_model_v4():
 
     # Audio input shape
-    input_shape = (SYNCNET_MFCC_CHANNELS, AUDIO_TIME_STEPS, 1)
+    input_shape = (syncnet_params.SYNCNET_MFCC_CHANNELS, syncnet_params.AUDIO_TIME_STEPS, 1)
 
     audio_model_v4 = Sequential()     # (None, 12, 20, 1)
 
@@ -450,11 +451,11 @@ def syncnet_audio_model_v4():
 def syncnet_lip_model_v7():
 
     # Image data format
-    K.set_image_data_format(IMAGE_DATA_FORMAT)
-    if IMAGE_DATA_FORMAT == 'channels_first':
-        input_shape = (SYNCNET_VIDEO_CHANNELS, FACE_H, FACE_W)
-    elif IMAGE_DATA_FORMAT == 'channels_last':
-        input_shape = (FACE_H, FACE_W, SYNCNET_VIDEO_CHANNELS)
+    K.set_image_data_format(syncnet_params.IMAGE_DATA_FORMAT)
+    if syncnet_params.IMAGE_DATA_FORMAT == 'channels_first':
+        input_shape = (syncnet_params.SYNCNET_VIDEO_CHANNELS, syncnet_params.FACE_H, syncnet_params.FACE_W)
+    elif syncnet_params.IMAGE_DATA_FORMAT == 'channels_last':
+        input_shape = (syncnet_params.FACE_H, syncnet_params.FACE_W, syncnet_params.SYNCNET_VIDEO_CHANNELS)
 
     lip_model_v7 = Sequential()     # (None, 224, 224, 5)
 
@@ -543,7 +544,7 @@ def syncnet_lip_model_v7():
 def syncnet_audio_model_v7():
 
     # Audio input shape
-    input_shape = (SYNCNET_MFCC_CHANNELS, AUDIO_TIME_STEPS, 1)
+    input_shape = (syncnet_params.SYNCNET_MFCC_CHANNELS, syncnet_params.AUDIO_TIME_STEPS, 1)
 
     audio_model_v7 = Sequential()     # (None, 12, 20, 1)
 
@@ -617,3 +618,104 @@ def syncnet_audio_model_v7():
 
     return audio_model_v7
 
+
+def detect_mouth_in_frame(frame, detector, predictor,
+                          prevFace=dlib.rectangle(30, 30, 220, 220),
+                          verbose=False):
+    # Shape Coords: ------> x (cols)
+    #               |
+    #               |
+    #               v
+    #               y
+    #             (rows)
+
+    # Detect all faces
+    faces = detector(frame, 1)
+
+    # If no faces are detected
+    if len(faces) == 0:
+        if verbose:
+            print("No faces detected, using prevFace", prevFace, "(detect_mouth_in_frame)")
+        faces = [prevFace]
+
+    # Note first face (ASSUMING FIRST FACE IS THE REQUIRED ONE!)
+    face = faces[0]
+    # Predict facial landmarks
+    shape = predictor(frame, face)
+    # Note all mouth landmark coordinates
+    mouthCoords = np.array([[shape.part(i).x, shape.part(i).y]
+                            for i in range(48, 68)])
+
+    # Mouth Rect: x, y, x+w, y+h
+    mouthRect = [np.min(mouthCoords[:, 1]), np.min(mouthCoords[:, 0]),
+                 np.max(mouthCoords[:, 1]), np.max(mouthCoords[:, 0])]
+
+    # Make mouthRect square
+    mouthRect = make_rect_shape_square(mouthRect)
+
+    # Expand mouthRect square
+    expandedMouthRect = expand_rect(mouthRect,
+        scale=(MOUTH_TO_FACE_RATIO * face.width() / mouthRect[2]),
+        frame_shape=(frame.shape[0], frame.shape[1]))
+    
+    # Mouth
+    mouth = frame[expandedMouthRect[1]:expandedMouthRect[3],
+                  expandedMouthRect[0]:expandedMouthRect[2]]
+
+    # # Resize to 120x120
+    # resizedMouthImage = np.round(resize(mouth, (120, 120), preserve_range=True)).astype('uint8')
+
+    # Return mouth
+    return mouth, face
+
+
+def make_rect_shape_square(rect):
+    # Rect: (x, y, x+w, y+h)
+    x = rect[0]
+    y = rect[1]
+    w = rect[2] - x
+    h = rect[3] - y
+    # If width > height
+    if w > h:
+        new_x = x
+        new_y = int(y - (w-h)/2)
+        new_w = w
+        new_h = w
+    # Else (height > width)
+    else:
+        new_x = int(x - (h-w)/2)
+        new_y = y
+        new_w = h
+        new_h = h
+    # Return
+    return [new_x, new_y, new_x + new_w, new_y + new_h]
+
+
+def expand_rect(rect, scale=None, scale_w=1.5, scale_h=1.5, frame_shape=(256, 256)):
+    if scale is not None:
+        scale_w = scale
+        scale_h = scale
+    # Rect: (x, y, x+w, y+h)
+    x = rect[0]
+    y = rect[1]
+    w = rect[2] - x
+    h = rect[3] - y
+    # new_w, new_h
+    new_w = int(w * scale_w)
+    new_h = int(h * scale_h)
+    # new_x
+    new_x = int(x - (new_w - w)/2)
+    if new_x < 0:
+        new_w = new_x + new_w
+        new_x = 0
+    elif new_x + new_w > (frame_shape[1] - 1):
+        new_w = (frame_shape[1] - 1) - new_x
+    # new_y
+    new_y = int(y - (new_h - h)/2)
+    if new_y < 0:
+        new_h = new_y + new_h
+        new_y = 0
+    elif new_y + new_h > (frame_shape[0] - 1):
+        new_h = (frame_shape[0] - 1) - new_y
+    # Return
+    return [new_x, new_y, new_x + new_w, new_y + new_h]
