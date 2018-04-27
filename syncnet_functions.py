@@ -366,11 +366,11 @@ def syncnet_audio_model_v4():
     # Audio input shape
     input_shape = (SYNCNET_MFCC_CHANNELS, AUDIO_TIME_STEPS, 1)
 
-    audio_model_v4 = Sequential()     # (None, 13, 20, 1)
+    audio_model_v4 = Sequential()     # (None, 12, 20, 1)
 
     # conv1_audio
     audio_model_v4.add(Conv2D(64, (3, 3), padding='same', name='conv1_audio',
-        input_shape=input_shape))  # (None, 13, 20, 64)
+        input_shape=input_shape))  # (None, 12, 20, 64)
 
     # bn1_audio
     audio_model_v4.add(BatchNormalization(name='bn1_audio'))
@@ -379,7 +379,7 @@ def syncnet_audio_model_v4():
     audio_model_v4.add(Activation('relu', name='relu1_audio'))
 
     # conv2_audio
-    audio_model_v4.add(Conv2D(128, (3, 3), padding='same', name='conv2_audio'))   # (None, 13, 20, 128)
+    audio_model_v4.add(Conv2D(128, (3, 3), padding='same', name='conv2_audio'))   # (None, 12, 20, 128)
 
     # bn2_audio
     audio_model_v4.add(BatchNormalization(name='bn2_audio'))
@@ -388,10 +388,10 @@ def syncnet_audio_model_v4():
     audio_model_v4.add(Activation('relu', name='relu2_audio'))
 
     # pool2_audio
-    audio_model_v4.add(MaxPooling2D(pool_size=(3, 3), strides=(1, 2), padding='valid', name='pool2_audio'))   # (None, 11, 9, 128)
+    audio_model_v4.add(MaxPooling2D(pool_size=(1, 3), strides=(1, 2), padding='valid', name='pool2_audio'))   # (None, 12, 9, 128)
 
     # conv3_audio
-    audio_model_v4.add(Conv2D(256, (3, 3), padding='same', name='conv3_audio'))   # (None, 11, 9, 256)
+    audio_model_v4.add(Conv2D(256, (3, 3), padding='same', name='conv3_audio'))   # (None, 12, 9, 256)
 
     # bn3_audio
     audio_model_v4.add(BatchNormalization(name='bn3_audio'))
@@ -400,7 +400,7 @@ def syncnet_audio_model_v4():
     audio_model_v4.add(Activation('relu', name='relu3_audio'))
 
     # conv4_audio
-    audio_model_v4.add(Conv2D(256, (3, 3), padding='same', name='conv4_audio'))   # (None, 11, 9, 256)
+    audio_model_v4.add(Conv2D(256, (3, 3), padding='same', name='conv4_audio'))   # (None, 12, 9, 256)
 
     # bn4_audio
     audio_model_v4.add(BatchNormalization(name='bn4_audio'))
@@ -409,7 +409,7 @@ def syncnet_audio_model_v4():
     audio_model_v4.add(Activation('relu', name='relu4_audio'))
 
     # conv5_audio
-    audio_model_v4.add(Conv2D(256, (3, 3), padding='same', name='conv5_audio'))   # (None, 11, 9, 256)
+    audio_model_v4.add(Conv2D(256, (3, 3), padding='same', name='conv5_audio'))   # (None, 12, 9, 256)
 
     # bn5_audio
     audio_model_v4.add(BatchNormalization(name='bn5_audio'))
@@ -431,7 +431,7 @@ def syncnet_audio_model_v4():
     audio_model_v4.add(Activation('relu', name='relu6_audio'))
 
     # fc7_audio
-    audio_model_v4.add(Dense(128, name='fc7_audio'))    # (None, 256)
+    audio_model_v4.add(Dense(128, name='fc7_audio'))    # (None, 128)
 
     # bn7_audio
     audio_model_v4.add(BatchNormalization(name='bn7_audio'))
@@ -545,17 +545,17 @@ def syncnet_audio_model_v7():
     # Audio input shape
     input_shape = (SYNCNET_MFCC_CHANNELS, AUDIO_TIME_STEPS, 1)
 
-    audio_model_v7 = Sequential()     # (None, 13, 20, 1)
+    audio_model_v7 = Sequential()     # (None, 12, 20, 1)
 
     # conv1_audio
     audio_model_v7.add(Conv2D(64, (3, 3), padding='same', name='conv1_audio',
-        input_shape=input_shape))  # (None, 13, 20, 64)
+        input_shape=input_shape))  # (None, 12, 20, 64)
 
     # bn1_audio
     audio_model_v7.add(BatchNormalization(name='bn1_audio'))
 
     # conv2_audio
-    audio_model_v7.add(Conv2D(128, (3, 3), padding='same', name='conv2_audio'))   # (None, 13, 20, 128)
+    audio_model_v7.add(Conv2D(128, (3, 3), padding='same', name='conv2_audio'))   # (None, 12, 20, 128)
 
     # bn2_audio
     audio_model_v7.add(BatchNormalization(name='bn2_audio'))
@@ -564,10 +564,10 @@ def syncnet_audio_model_v7():
     audio_model_v7.add(Activation('relu', name='relu2_audio'))
 
     # pool2_audio
-    audio_model_v7.add(MaxPooling2D(pool_size=(3, 3), strides=(1, 2), padding='valid', name='pool2_audio'))   # (None, 11, 9, 128)
+    audio_model_v7.add(MaxPooling2D(pool_size=(1, 3), strides=(1, 2), padding='valid', name='pool2_audio'))   # (None, 12, 9, 128)
 
     # conv3_audio
-    audio_model_v7.add(Conv2D(256, (3, 3), padding='same', name='conv3_audio'))   # (None, 11, 9, 256)
+    audio_model_v7.add(Conv2D(256, (3, 3), padding='same', name='conv3_audio'))   # (None, 12, 9, 256)
 
     # bn3_audio
     audio_model_v7.add(BatchNormalization(name='bn3_audio'))
@@ -576,7 +576,7 @@ def syncnet_audio_model_v7():
     audio_model_v7.add(Activation('relu', name='relu3_audio'))
 
     # conv7_audio
-    audio_model_v7.add(Conv2D(256, (3, 3), padding='same', name='conv7_audio'))   # (None, 11, 9, 256)
+    audio_model_v7.add(Conv2D(256, (3, 3), padding='same', name='conv7_audio'))   # (None, 12, 9, 256)
 
     # bn4_audio
     audio_model_v7.add(BatchNormalization(name='bn4_audio'))
@@ -585,7 +585,7 @@ def syncnet_audio_model_v7():
     audio_model_v7.add(Activation('relu', name='relu4_audio'))
 
     # conv5_audio
-    audio_model_v7.add(Conv2D(256, (3, 3), padding='same', name='conv5_audio'))   # (None, 11, 9, 256)
+    audio_model_v7.add(Conv2D(256, (3, 3), padding='same', name='conv5_audio'))   # (None, 12, 9, 256)
 
     # bn5_audio
     audio_model_v7.add(BatchNormalization(name='bn5_audio'))
@@ -616,3 +616,4 @@ def syncnet_audio_model_v7():
     audio_model_v7.add(Activation('relu', name='relu7_audio'))
 
     return audio_model_v7
+
