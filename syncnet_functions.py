@@ -1,6 +1,6 @@
 from __future__ import print_function
 
-import dlib
+# import dlib
 import h5py
 import numpy as np
 import os
@@ -275,7 +275,7 @@ def syncnet_lip_model_v4():
     K.set_image_data_format(syncnet_params.IMAGE_DATA_FORMAT)
     if syncnet_params.IMAGE_DATA_FORMAT == 'channels_first':
         input_shape = (syncnet_params.SYNCNET_VIDEO_CHANNELS, syncnet_params.MOUTH_H, syncnet_params.MOUTH_W)
-    elif IMAGE_DATA_FORMAT == 'channels_last':
+    elif syncnet_params.IMAGE_DATA_FORMAT == 'channels_last':
         input_shape = (syncnet_params.MOUTH_H, syncnet_params.MOUTH_W, syncnet_params.SYNCNET_VIDEO_CHANNELS)
 
     lip_model_v4 = Sequential()     # (None, 112, 112, 5)
@@ -619,8 +619,13 @@ def syncnet_audio_model_v7():
     return audio_model_v7
 
 
+#############################################################
+# UTILS
+#############################################################
+
+
 def detect_mouth_in_frame(frame, detector, predictor,
-                          prevFace=dlib.rectangle(30, 30, 220, 220),
+                          prevFace=[30, 30, 220, 220],
                           verbose=False):
     # Shape Coords: ------> x (cols)
     #               |
